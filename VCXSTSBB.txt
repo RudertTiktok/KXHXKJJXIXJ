@@ -1289,7 +1289,7 @@ ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(slash: 
 end)
 
 local last_stable_ping = 50
-local lag_threshold = 100
+local lag_threshold = 120
 local spike_factor = 2 
 
 ConnectionsManager['auto_parry'] = RunService.PostSimulation:Connect(function()
@@ -1312,58 +1312,44 @@ ConnectionsManager['auto_parry'] = RunService.PostSimulation:Connect(function()
     local ball_properties = AutoParry.ball.properties
     ball_properties.is_curved = AutoParry.is_curved()
     
+    
     local current_ping = Player.Entity.properties.ping or 50
     if current_ping <= lag_threshold and current_ping <= last_stable_ping * spike_factor then
-        last_stable_ping = current_ping
+        last_stable_ping = current_ping -- Update stable ping if not lagging
     end
     
+    -- Base ping calculation
     local slider_ping_threshold = ball_properties.ping_threshold or 16
-    local ping_threshold = math.clamp(Player.Entity.properties.ping / 10, 8, slider_ping_threshold)
-    local spam_accuracy = ball_properties.maximum_speed / 8 + ping_threshold
-    local parry_accuracy = ball_properties.maximum_speed / 12 + ping_threshold
-    ball_properties.spam_range = ping_threshold + ball_properties.speed / 2.5
-    ball_properties.parry_range = ping_threshold + ball_properties.speed / math.pi + ping_threshold
+    local ping_threshold = math.clamp(Player.Entity.properties.ping / 10, 10, slider_ping_threshold)
+    local spam_accuracy = ball_properties.maximum_speed / 7 + ping_threshold
+    local parry_accuracy = ball_properties.maximum_speed / 11.5 + ping_threshold
+    ball_properties.spam_range = ping_threshold + ball_properties.speed / 2.3
+    ball_properties.parry_range = ping_threshold + ball_properties.speed / math.pi 
     if Player.Entity.properties.sword == 'Titan Blade' then
-        ball_properties.parry_range += 10
-        ball_properties.spam_range += 1.5
+        ball_properties.parry_range += 11
+        ball_properties.spam_range += 2
     end
     local distance_to_last_position = LocalPlayer:DistanceFromCharacter(ball_properties.last_position) or 0
 
+    -- Wrapped section with stable ping during lag
     local effective_ping = (current_ping > lag_threshold or current_ping > last_stable_ping * spike_factor) and last_stable_ping or current_ping
-    local effective_ping_threshold = math.clamp(effective_ping / 10, 8, 18)
-    local effective_parry_accuracy = ball_properties.maximum_speed / 12 + effective_ping_threshold
-    local effective_spam_accuracy = ball_properties.maximum_speed / 8 + effective_ping_threshold
-    local effective_spam_range = effective_ping_threshold + ball_properties.speed / 2.5
+    local effective_ping_threshold = math.clamp(effective_ping / 10, 10, 20)
+    local effective_parry_accuracy = ball_properties.maximum_speed / 11.2 + effective_ping_threshold
+    local effective_spam_accuracy = ball_properties.maximum_speed / 7 + effective_ping_threshold
+    local effective_spam_range = effective_ping_threshold + ball_properties.speed / 2.3
     local effective_parry_range = effective_ping_threshold + ball_properties.speed / math.pi + effective_ping_threshold
     if Player.Entity.properties.sword == 'Titan Blade' then
-        effective_parry_range += 10
-        effective_spam_range += 1.5
+        effective_parry_range += 11
+        effective_spam_range += 2
     end
 
-    -- Very close range (0-3): Aggressive spam, tolerate curves
-    if ball_properties.distance <= 3 and (AutoParry.entity_properties.distance or math.huge) <= 3 and ball_properties.dot > 0.7 then
-        ball_properties.auto_spam = true
-        ball_properties.cooldown = false
-        local spam_connection
-        spam_connection = RunService.Heartbeat:Connect(function()
-            if not ball_properties.auto_spam or ball_properties.distance > 3 or (AutoParry.entity_properties.distance or math.huge) > 3 or ball_properties.dot < 0.7 then
-                spam_connection:Disconnect()
-                ball_properties.auto_spam = false
-                return
-            end
-            AutoParry:PerformParry()
-        end)
-        return
-    end
-
-    -- Other cases
-    if AutoParry.target.current then
+    if ball_properties.auto_spam and AutoParry.target.current then
         ball_properties.auto_spam = AutoParry:is_spam({
             speed = ball_properties.speed,
             spam_accuracy = effective_spam_accuracy,
             parries = ball_properties.parries or 0,
             ball_speed = ball_properties.speed,
-            range = effective_spam_range / (3.5 - effective_ping_threshold / 12),
+            range = effective_spam_range / (3.15 - effective_ping_threshold / 10),
             last_hit = ball_properties.last_hit,
             ball_distance = ball_properties.distance,
             maximum_speed = ball_properties.maximum_speed,
@@ -1371,12 +1357,10 @@ ConnectionsManager['auto_parry'] = RunService.PostSimulation:Connect(function()
             entity_distance = AutoParry.entity_properties.distance or math.huge,
             last_position_distance = distance_to_last_position,
         })
-        if ball_properties.auto_spam then
-            AutoParry:PerformParry()
-            return
-        end
     end
-
+    if ball_properties.auto_spam then
+        return
+    end
     if AutoParry.target.current and AutoParry.target.current.Name == LocalPlayer.Name then
         ball_properties.auto_spam = AutoParry:is_spam({
             speed = ball_properties.speed,
@@ -1391,12 +1375,10 @@ ConnectionsManager['auto_parry'] = RunService.PostSimulation:Connect(function()
             entity_distance = AutoParry.entity_properties.distance or math.huge,
             last_position_distance = distance_to_last_position,
         })
-        if ball_properties.auto_spam then
-            AutoParry:PerformParry()
-            return
-        end
     end
-
+    if ball_properties.auto_spam then
+        return
+    end
     if ball_properties.is_curved then
         return
     end
@@ -1412,10 +1394,11 @@ ConnectionsManager['auto_parry'] = RunService.PostSimulation:Connect(function()
         repeat
             RunService.PreSimulation:Wait()
         until 
-            (tick() - ball_properties.last_hit) > 0.5 - (ping_threshold / 200)
+            (tick() - ball_properties.last_hit) > 1 - (ping_threshold / 250)
         ball_properties.cooldown = false
     end)
 end)
+
 
 task.delay(30, function()
     interface = interface or {}
